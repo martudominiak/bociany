@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Where Do the Storks Go?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,340;1,9..144,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<style>
+  /* ---------- tokens ---------- */
+  :root{
+    --sky-top: oklch(0.19 0.055 265);
+    --sky-mid: oklch(0.26 0.065 270);
+    --sky-low: oklch(0.33 0.06 300);
+    --horizon: oklch(0.56 0.14 45);
+
+    --ink: oklch(0.96 0.014 85);
+    --ink-2: oklch(0.83 0.02 80);
+    --ink-dim: oklch(0.70 0.028 70);
+
+    --stork: oklch(0.71 0.185 32);   /* vermilion: bill & legs */
+    --gold: oklch(0.82 0.135 72);    /* dawn / western route */
+    --rose: oklch(0.74 0.16 20);     /* coral / eastern route */
+    --sea: oklch(0.40 0.045 235);
+    --land: oklch(0.31 0.028 258);
+    --land-edge: oklch(0.42 0.035 250);
+
+    --line: color-mix(in oklch, var(--ink) 14%, transparent);
+    --panel: color-mix(in oklch, var(--sky-top) 82%, black 18%);
+
+    --measure: 42ch;
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-soft: cubic-bezier(0.33, 0.9, 0.3, 1);
+
+    --z-hud: 40;
+    --z-nav: 50;
+    --z-narrator: 60;
+
+    --font-display: "Fraunces", "Iowan Old Style", Georgia, "Times New Roman", serif;
+    --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  *,*::before,*::after{ box-sizing:border-box; margin:0; padding:0; }
+
+  html,body{ height:100%; }
+  body{
+    font-family: var(--font-sans);
+    color: var(--ink);
+    background:
+      radial-gradient(120% 80% at 78% -8%, oklch(0.34 0.07 285 / 0.65), transparent 60%),
+      radial-gradient(140% 90% at 12% 118%, oklch(0.5 0.12 46 / 0.28), transparent 55%),
+      linear-gradient(178deg, var(--sky-top) 0%, var(--sky-mid) 52%, var(--sky-low) 100%);
+    background-attachment: fixed;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* ---------- ambient sky flock ---------- */
+  .sky{ position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none; }
+  .sky .moon{
+    position:absolute; top:9%; right:12%;
+    width: clamp(120px, 16vw, 260px); aspect-ratio:1; border-radius:50%;
+    background: radial-gradient(circle at 38% 34%, oklch(0.94 0.03 80 / 0.95), oklch(0.8 0.05 70 / 0.28) 62%, transparent 72%);
+    filter: blur(0.5px);
+    opacity:0.85;
+  }
+  .sky .star{ position:absolute; width:2px; height:2px; border-radius:50%; background: var(--ink); opacity:0.5; }
+  .flock{ position:absolute; top:22%; left:-12%; width:120%; opacity:0.5; }
+  .flock .bird{ animation: drift 46s linear infinite; }
+  .flock .bird:nth-child(2){ animation-duration:58s; animation-delay:-14s; }
+  .flock .bird:nth-child(3){ animation-duration:70s; animation-delay:-30s; }
+  @keyframes drift{ from{ transform: translateX(0);} to{ transform: translateX(24vw);} }
+
+  /* ---------- deck ---------- */
+  .deck{ position:relative; z-index:1; height:100dvh; width:100%; }
+  .slide{
+    position:absolute; inset:0;
+    display:grid; place-items:center;
+    padding: clamp(1.4rem, 4vw, 4rem);
+    opacity:0; visibility:hidden;
+    transition: opacity .6s var(--ease), visibility .6s;
+    overflow-y:auto;
+  }
+  .slide.is-active{ opacity:1; visibility:visible; }
+  .inner{ width:100%; max-width: 1120px; margin-inline:auto; }
+  .wide .inner{ max-width: 1240px; }
+
+  /* ---------- shared type ---------- */
+  .chapter{
+    display:inline-flex; align-items:center; gap:.6em;
+    font-size: clamp(.72rem, 1.1vw, .82rem);
+    letter-spacing: .16em; text-transform: uppercase;
+    color: var(--ink-dim); font-weight:500;
+    margin-bottom: 1.4rem;
+  }
+  .chapter::before{ content:""; width:26px; height:1px; background: var(--stork); opacity:.9; }
+
+  h1,h2,h3{ font-family: var(--font-display); font-weight:500; letter-spacing:-0.02em; text-wrap:balance; line-height:1.02; }
+  .title{ font-size: clamp(2.9rem, 8.5vw, 6rem); line-height:0.98; letter-spacing:-0.03em; }
+  h2.head{ font-size: clamp(2rem, 5.2vw, 3.6rem); }
+  h3.subhead{ font-size: clamp(1.35rem, 3vw, 2rem); }
+
+  .lead{ font-size: clamp(1.05rem, 1.7vw, 1.32rem); line-height:1.6; color:var(--ink-2); max-width: var(--measure); text-wrap:pretty; }
+  .lead + .lead{ margin-top: 1rem; }
+  .em{ color: var(--ink); }
+  .accent{ color: var(--gold); }
+  .accent-r{ color: var(--rose); }
+  .accent-s{ color: var(--stork); font-style: italic; }
+
+  /* reveal (enhances an already-visible default) */
+  .reveal{ opacity:1; }
+  .slide.is-active .reveal{ animation: fadeUp .8s var(--ease) both; }
+  .slide.is-active .reveal:nth-child(2){ animation-delay:.08s; }
+  .slide.is-active .reveal:nth-child(3){ animation-delay:.16s; }
+  .slide.is-active .reveal:nth-child(4){ animation-delay:.24s; }
+  .slide.is-active .reveal:nth-child(5){ animation-delay:.32s; }
+  @keyframes fadeUp{ from{ opacity:0; transform: translateY(18px);} to{ opacity:1; transform:none;} }
+
+  /* ---------- layouts ---------- */
+  .split{ display:grid; grid-template-columns: 1.05fr 1fr; gap: clamp(1.5rem, 4vw, 3.8rem); align-items:center; }
+  .split.map-first{ grid-template-columns: 1.25fr .9fr; }
+  @media (max-width: 880px){ .split, .split.map-first{ grid-template-columns:1fr; gap:1.8rem; } }
+
+  /* stats */
+  .stats{ display:flex; flex-wrap:wrap; gap: clamp(1rem, 3vw, 2.4rem); margin-top:1.8rem; }
+  .stat .n{ font-family:var(--font-display); font-size: clamp(1.9rem, 4vw, 2.9rem); color:var(--ink); line-height:1; letter-spacing:-0.02em; }
+  .stat .n .u{ font-size:.5em; color:var(--ink-dim); font-family:var(--font-sans); letter-spacing:0; }
+  .stat .k{ margin-top:.5rem; font-size:.86rem; color:var(--ink-dim); max-width: 16ch; line-height:1.35; }
+
+  /* fact chip */
+  .fact{
+    margin-top: 1.7rem; padding: 1rem 1.15rem 1.05rem;
+    border:1px solid var(--line); border-radius:14px;
+    background: color-mix(in oklch, var(--sky-top) 60%, transparent);
+    max-width: 40ch;
+  }
+  .fact b{ color: var(--gold); font-weight:600; letter-spacing:.02em; font-size:.74rem; text-transform:uppercase; display:block; margin-bottom:.35rem; }
+  .fact p{ color: var(--ink-2); font-size:.98rem; line-height:1.5; }
+
+  /* theory list (slide 3) */
+  .theories{ display:flex; flex-direction:column; gap:1.1rem; margin-top:1.9rem; max-width: 52ch; }
+  .theory{ display:grid; grid-template-columns: auto 1fr; gap:1.1rem; align-items:start; }
+  .theory .yr{ font-family:var(--font-display); font-size:1.05rem; color:var(--gold); padding-top:.15rem; white-space:nowrap; }
+  .theory p{ color:var(--ink-2); line-height:1.55; }
+  .theory p .h{ color: var(--ink); font-weight:500; }
+
+  /* pull quote (slide 4) */
+  .pull{ font-family:var(--font-display); font-weight:340; font-style:italic; font-size: clamp(1.5rem, 3.4vw, 2.4rem); line-height:1.25; color:var(--ink); text-wrap:balance; max-width: 20ch; }
+
+  /* crossings (slide 7) */
+  .crossings{ display:grid; grid-template-columns:1fr 1fr; gap: clamp(1rem,2.5vw,2rem); margin-top:2rem; }
+  @media(max-width:720px){ .crossings{ grid-template-columns:1fr; } }
+  .cross{ border:1px solid var(--line); border-radius:16px; padding: clamp(1.1rem,2.2vw,1.6rem); background: color-mix(in oklch, var(--sky-top) 55%, transparent); }
+  .cross .tag{ font-size:.74rem; letter-spacing:.14em; text-transform:uppercase; font-weight:600; }
+  .cross.west .tag{ color:var(--gold); } .cross.east .tag{ color:var(--rose); }
+  .cross h4{ font-family:var(--font-display); font-weight:500; font-size:1.5rem; margin:.5rem 0 .2rem; }
+  .cross .big{ font-family:var(--font-display); font-size: clamp(2.2rem,5vw,3.2rem); line-height:1; margin:.7rem 0 .3rem; letter-spacing:-0.02em; }
+  .cross.west .big{ color:var(--gold);} .cross.east .big{ color:var(--rose);}
+  .cross p{ color:var(--ink-2); font-size:.96rem; line-height:1.5; }
+
+  /* danger rows (slide 8) */
+  .rows{ display:flex; flex-direction:column; margin-top:1.6rem; max-width:54ch; }
+  .row{ display:grid; grid-template-columns: 3.2rem 1fr; gap:1.1rem; padding:1.05rem 0; border-top:1px solid var(--line); align-items:baseline; }
+  .row:last-child{ border-bottom:1px solid var(--line); }
+  .row .ix{ font-family:var(--font-display); color:var(--stork); font-size:1.1rem; }
+  .row h4{ font-family:var(--font-sans); font-weight:600; font-size:1.02rem; color:var(--ink); margin-bottom:.2rem; }
+  .row p{ color:var(--ink-2); font-size:.95rem; line-height:1.5; }
+
+  /* timeline (slide 10) */
+  .track{ display:grid; grid-template-columns: repeat(3, 1fr); gap: clamp(1rem,2.5vw,2rem); margin-top:2rem; }
+  @media(max-width:720px){ .track{ grid-template-columns:1fr; } }
+  .step{ position:relative; padding-top:1.6rem; }
+  .step::before{ content:""; position:absolute; top:0; left:0; width:100%; height:1px; background:var(--line); }
+  .step::after{ content:""; position:absolute; top:-4px; left:0; width:9px; height:9px; border-radius:50%; background:var(--gold); box-shadow:0 0 12px var(--gold); }
+  .step .yr{ font-family:var(--font-display); color:var(--gold); font-size:1.05rem; }
+  .step h4{ font-family:var(--font-sans); font-weight:600; margin:.35rem 0 .3rem; color:var(--ink); }
+  .step p{ color:var(--ink-2); font-size:.94rem; line-height:1.5; }
+
+  /* map ---------------------------------------------------- */
+  .mapwrap{ position:relative; width:100%; display:flex; flex-direction:column; align-items:center; }
+  svg.map{ width:100%; height:auto; display:block; overflow:visible; }
+  .route{ fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .route-glow{ opacity:.5; }                               /* visible resting state */
+  .route-line{ stroke-dasharray: 2400; stroke-dashoffset: 0; } /* visible resting state */
+  .slide.is-active .route-line{ animation: draw 2.4s var(--ease-soft) both; }
+  .slide.is-active .route-glow{ animation: glowin 1.8s ease both; }
+  @keyframes draw{ from{ stroke-dashoffset:2400; } to{ stroke-dashoffset:0; } }
+  @keyframes glowin{ from{ opacity:0; } to{ opacity:.5; } }
+  .node circle.core{ transform-box: fill-box; transform-origin:center; }
+  .slide.is-active .node .pulse{ animation: pulse 2.6s ease-out infinite; }
+  @keyframes pulse{ 0%{ r:5; opacity:.7;} 70%{ r:20; opacity:0;} 100%{opacity:0;} }
+  .maplabel{ font-family:var(--font-sans); fill:var(--ink); font-size:15px; font-weight:500; }
+  .maplabel.sub{ fill:var(--ink-dim); font-size:12.5px; font-weight:400; }
+  .maplabel.route-lbl{ font-size:13px; letter-spacing:.02em; }
+  .grid-l{ stroke: var(--line); stroke-width:1; opacity:.5; }
+  .legend{ display:flex; gap:1.6rem; margin-top:1.2rem; flex-wrap:wrap; }
+  .legend span{ display:inline-flex; align-items:center; gap:.5rem; font-size:.9rem; color:var(--ink-2); }
+  .legend i{ width:22px; height:3px; border-radius:2px; display:inline-block; }
+  .traveller{ opacity:1; }
+
+  /* thermals diagram (slide 5) */
+  .thermal-svg{ width:100%; height:auto; }
+  .rise{ transform-origin:center; }
+  .slide.is-active .rise{ animation: rise 4.5s ease-in-out infinite; }
+  @keyframes rise{ 0%{ transform: translateY(10px); opacity:0;} 30%{opacity:.9;} 100%{ transform: translateY(-46px); opacity:0;} }
+
+  /* Leaflet map (slide 6) */
+  #leafletMap{
+    height: min(74vh, 660px); width:100%;
+    border-radius:18px; overflow:hidden;
+    border:1px solid var(--line);
+    background: oklch(0.16 0.04 262);
+    box-shadow: 0 24px 60px oklch(0.1 0.05 265 / .5), inset 0 0 0 1px oklch(0.9 0.02 80 / .04);
+  }
+  @media (max-width:880px){ #leafletMap{ height: 56vh; } }
+  .map-hint{ margin-top:.8rem; font-size:.82rem; color:var(--ink-dim); letter-spacing:.02em; text-align:center; }
+  .map-fallback{ position:absolute; inset:0; z-index:1; display:flex; align-items:center; justify-content:center; text-align:center; padding:2rem; color:var(--ink-dim); font-size:.95rem; line-height:1.6; }
+  .map-live .map-fallback{ display:none; }
+  .leaflet-container{ background: oklch(0.16 0.04 262); font-family: var(--font-sans); }
+  .leaflet-container a{ color: var(--gold); }
+  .leaflet-bar{ border:none; box-shadow: 0 6px 18px oklch(0.1 0.05 265 / .5); }
+  .leaflet-bar a{
+    background: var(--panel); color: var(--ink);
+    border-bottom-color: var(--line);
+    width:32px; height:32px; line-height:32px; font-size:19px;
+  }
+  .leaflet-bar a:hover{ background: oklch(0.3 0.05 265); color: var(--gold); }
+  .leaflet-bar a:first-child{ border-top-left-radius:9px; border-top-right-radius:9px; }
+  .leaflet-bar a:last-child{ border-bottom-left-radius:9px; border-bottom-right-radius:9px; }
+  .leaflet-control-attribution{
+    background: oklch(0.14 0.03 262 / .82) !important; color: var(--ink-dim) !important;
+    font-size:10.5px !important; padding:2px 7px !important; border-radius:8px 0 0 0;
+  }
+  .leaflet-control-attribution a{ color: var(--ink-2) !important; }
+
+  /* route lines drawn by Leaflet (SVG paths) */
+  .leaflet-overlay-pane path.route-anim{ stroke-dasharray: 3200; stroke-dashoffset: 0; }
+  .slide.is-active .leaflet-overlay-pane path.route-anim{ animation: drawgeo 2.8s var(--ease-soft) both; }
+  @keyframes drawgeo{ from{ stroke-dashoffset: 3200; } to{ stroke-dashoffset: 0; } }
+
+  /* custom map pins */
+  .pin{ display:flex; align-items:center; gap:7px; transform: translate(-7px,-7px); white-space:nowrap; pointer-events:none; }
+  .pin i{ width:13px; height:13px; border-radius:50%; position:relative; flex:none;
+    box-shadow: 0 0 0 3px oklch(0.14 0.03 262 / .7), 0 0 12px currentColor; }
+  .pin i::after{ content:""; position:absolute; inset:-4px; border-radius:50%; border:1.5px solid currentColor; opacity:.6; }
+  .slide.is-active .pin i::after{ animation: ping 2.8s ease-out infinite; }
+  @keyframes ping{ 0%{ transform:scale(.6); opacity:.7;} 70%{ transform:scale(2.4); opacity:0;} 100%{opacity:0;} }
+  .pin b{ font-family:var(--font-sans); font-weight:600; font-size:12.5px; color:var(--ink);
+    text-shadow: 0 1px 3px oklch(0.1 0.03 262 / .95), 0 0 8px oklch(0.1 0.03 262 / .8); }
+  .pin b span{ display:block; font-weight:400; font-size:11px; color:var(--ink-2); }
+  .pin.gold{ color: var(--gold); } .pin.gold i{ background: var(--gold); }
+  .pin.rose{ color: var(--rose); } .pin.rose i{ background: var(--rose); }
+  .pin.start{ color: var(--ink); } .pin.start i{ background: var(--ink); }
+  .pin-wrap{ background:transparent !important; border:0 !important; }
+
+  /* ---------- HUD / chrome ---------- */
+  .progress{ position:fixed; top:0; left:0; height:3px; width:0; background: linear-gradient(90deg, var(--stork), var(--gold)); z-index: var(--z-hud); transition: width .5s var(--ease); box-shadow:0 0 10px oklch(0.7 0.15 45 / .6); }
+  .hud{ position:fixed; z-index:var(--z-hud); color:var(--ink-dim); font-size:.8rem; letter-spacing:.04em; }
+  .hud.brand{ top: clamp(1rem,3vh,1.6rem); left: clamp(1.2rem,3vw,2.2rem); display:flex; align-items:center; gap:.6rem; color:var(--ink-2); font-weight:500; }
+  .hud.brand svg{ width:22px; height:22px; }
+  .counter{ position:fixed; bottom: clamp(1rem,3vh,1.6rem); left: clamp(1.2rem,3vw,2.2rem); z-index:var(--z-hud); font-family:var(--font-display); font-size:.95rem; color:var(--ink-dim); letter-spacing:.05em; }
+  .counter b{ color:var(--ink); font-weight:500; }
+
+  .nav{ position:fixed; bottom: clamp(1rem,3vh,1.6rem); right: clamp(1.2rem,3vw,2.2rem); z-index:var(--z-nav); display:flex; gap:.6rem; align-items:center; }
+  .btn{
+    -webkit-appearance:none; appearance:none; cursor:pointer;
+    font-family:var(--font-sans); font-size:.9rem; color:var(--ink);
+    background: color-mix(in oklch, var(--sky-top) 65%, transparent);
+    border:1px solid var(--line); border-radius:100px;
+    padding:.6rem 1rem; display:inline-flex; align-items:center; gap:.5rem;
+    transition: border-color .25s, background .25s, transform .12s;
+  }
+  .btn:hover{ border-color: color-mix(in oklch, var(--gold) 60%, var(--line)); background: color-mix(in oklch, var(--sky-top) 40%, transparent); }
+  .btn:active{ transform: translateY(1px); }
+  .btn.icon{ padding:.6rem; width:42px; height:42px; justify-content:center; }
+  .btn svg{ width:18px; height:18px; }
+  .btn[disabled]{ opacity:.35; pointer-events:none; }
+
+  .hint{ position:fixed; bottom: clamp(1rem,3vh,1.6rem); left:50%; transform:translateX(-50%); z-index:var(--z-hud); color:var(--ink-dim); font-size:.82rem; letter-spacing:.03em; display:flex; gap:1.2rem; align-items:center; transition:opacity .5s; }
+  .hint kbd{ font-family:var(--font-sans); font-size:.74rem; background: color-mix(in oklch, var(--ink) 12%, transparent); border:1px solid var(--line); border-radius:6px; padding:.12rem .45rem; color:var(--ink-2); }
+  @media(max-width:880px){ .hint{ display:none; } }
+
+  /* ---------- narrator panel ---------- */
+  .narrator{
+    position:fixed; z-index:var(--z-narrator); left:0; right:0; bottom:0;
+    transform: translateY(101%); transition: transform .5s var(--ease);
+    background: var(--panel);
+    border-top:1px solid color-mix(in oklch, var(--gold) 30%, var(--line));
+    box-shadow: 0 -30px 60px oklch(0.1 0.05 265 / .5);
+    padding: clamp(1.4rem,3vw,2.2rem) clamp(1.4rem,4vw,3rem) clamp(2.4rem,4vw,2.6rem);
+    max-height: 62dvh; overflow-y:auto;
+  }
+  .narrator.open{ transform: translateY(0); }
+  .narrator .lbl{ display:flex; align-items:center; gap:.6rem; font-size:.74rem; letter-spacing:.16em; text-transform:uppercase; color:var(--gold); font-weight:600; margin-bottom:.9rem; }
+  .narrator .lbl svg{ width:16px; height:16px; }
+  .narrator .script{ font-family:var(--font-display); font-weight:340; font-size: clamp(1.05rem, 1.9vw, 1.4rem); line-height:1.62; color:var(--ink); max-width: 74ch; text-wrap:pretty; }
+  .narrator .close{ position:absolute; top:1rem; right:1rem; }
+
+  .note{ display:none; }
+
+  /* ---------- reduced motion ---------- */
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.1ms !important; }
+    .flock .bird{ animation:none; }
+    .route-line{ stroke-dashoffset:0; }
+  }
+  @media print{ .hud,.nav,.hint,.progress,.narrator{ display:none; } }
+</style>
+</head>
+<body>
+
+<!-- ambient sky -->
+<div class="sky" aria-hidden="true">
+  <div class="moon"></div>
+  <div id="stars"></div>
+  <svg class="flock" viewBox="0 0 1000 200" fill="none" stroke="oklch(0.9 0.02 80)" stroke-width="3" stroke-linecap="round">
+    <g class="bird" transform="translate(120 40)"><path d="M0 8 Q9 -4 18 8 Q27 -4 36 8"/></g>
+    <g class="bird" transform="translate(320 78) scale(0.8)"><path d="M0 8 Q9 -4 18 8 Q27 -4 36 8"/></g>
+    <g class="bird" transform="translate(560 30) scale(1.1)"><path d="M0 8 Q9 -4 18 8 Q27 -4 36 8"/></g>
+  </svg>
+</div>
+
+<div class="progress" id="progress"></div>
+
+<div class="hud brand">
+  <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
+    <path d="M20 6 C18 12 15 15 15 20 C15 26 18 30 20 34 C22 30 25 26 25 20 C25 15 22 12 20 6 Z" fill="oklch(0.96 0.01 85)"/>
+    <path d="M20 34 L20 40" stroke="var(--stork)" stroke-width="2"/>
+    <path d="M20 20 L28 17" stroke="var(--stork)" stroke-width="2" stroke-linecap="round"/>
+  </svg>
+  The White Stork
+</div>
+
+<main class="deck" id="deck">
+
+  <!-- 1 · TITLE -->
+  <section class="slide is-active" data-chapter="Prologue">
+    <div class="inner" style="text-align:center;">
+      <p class="chapter reveal" style="justify-content:center;">A story of the white stork</p>
+      <h1 class="title reveal">Where Do the<br/>Storks Go?</h1>
+      <p class="lead reveal" style="margin:1.6rem auto 0; text-align:center;">
+        Every autumn they empty off the rooftops of Europe and disappear. This is the story of where they go, how they get there, and how we finally found out.
+      </p>
+      <p class="reveal" style="margin-top:2.4rem; color:var(--ink-dim); font-size:.9rem; letter-spacing:.03em;">
+        Press <kbd style="font-family:var(--font-sans);border:1px solid var(--line);border-radius:6px;padding:.1rem .45rem;">&rarr;</kbd> to begin &nbsp;·&nbsp; press <kbd style="font-family:var(--font-sans);border:1px solid var(--line);border-radius:6px;padding:.1rem .45rem;">N</kbd> for the narrator
+      </p>
+    </div>
+    <div class="note">Start here. Walk through almost any village in Poland in July and you will see one. A white stork, standing on a great wheel of sticks on top of a chimney, throwing its head back and clattering its beak like a wooden rattle. Now come back in November. The nest is empty. The bird is gone. And for almost all of human history, nobody knew where. That question, where do the storks go, is one of the oldest riddles in the study of nature. Tonight we are going to answer it. And the answer is stranger, and far bigger, than anyone once guessed.</div>
+  </section>
+
+  <!-- 2 · MEET THE TRAVELER -->
+  <section class="slide" data-chapter="The bird">
+    <div class="inner">
+      <div class="split">
+        <div>
+          <p class="chapter reveal">The traveler</p>
+          <h2 class="head reveal">A metre tall, and almost completely silent</h2>
+          <p class="lead reveal">She stands over a metre high, spreads her wings close to two metres, and weighs about as much as a large house cat. She can live past thirty. And she barely makes a sound. Storks greet each other by clattering their beaks, a dry wooden drumming you feel more than hear.</p>
+          <div class="fact reveal">
+            <b>The Polish stork</b>
+            <p>Roughly one white stork in every four is born in Poland. No country hosts more of them in summer.</p>
+          </div>
+        </div>
+        <div class="reveal">
+          <div class="stats">
+            <div class="stat"><div class="n">2.1<span class="u"> m</span></div><div class="k">wingspan, tip to tip</div></div>
+            <div class="stat"><div class="n">30+<span class="u"> yrs</span></div><div class="k">lifespan in the wild</div></div>
+            <div class="stat"><div class="n">~4<span class="u"> kg</span></div><div class="k">about a house cat</div></div>
+            <div class="stat"><div class="n">1 in 4</div><div class="k">of the world's storks is Polish</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="note">First, meet her properly. The white stork stands over a metre tall, with a wingspan close to two metres, and she weighs about as much as a large house cat. She can live past thirty. And here is the odd thing about her. She is almost completely silent. No song, no call worth the name. When storks meet on the nest they throw their heads right back and clatter their beaks, a sound like someone drumming fast on a wooden fence. If you have ever stood under a stork nest, that clatter is the thing you remember. And a great many of those nests are here. Roughly one white stork in every four is born in Poland, which makes this country, more than any other on earth, the storks' summer home.</div>
+  </section>
+
+  <!-- 3 · THE OLD MYSTERY -->
+  <section class="slide" data-chapter="The mystery">
+    <div class="inner">
+      <p class="chapter reveal">The mystery</p>
+      <h2 class="head reveal" style="max-width:16ch;">For centuries, the best minds simply guessed</h2>
+      <div class="theories">
+        <div class="theory reveal">
+          <span class="yr">350 BC</span>
+          <p><span class="h">They sleep through it.</span> Aristotle was sure some birds hibernated, hiding away in hollow trees until the spring returned them.</p>
+        </div>
+        <div class="theory reveal">
+          <span class="yr">for ages</span>
+          <p><span class="h">They rest in the mud.</span> Fishermen swore that swallows and storks spent the winter asleep at the bottom of ponds and marshes.</p>
+        </div>
+        <div class="theory reveal">
+          <span class="yr">1703</span>
+          <p><span class="h">They fly to the moon.</span> An English pamphlet worked out the sums and concluded, in all seriousness, that the birds left for the moon and back, a two month trip each way.</p>
+        </div>
+      </div>
+    </div>
+    <div class="note">Now the mystery itself. A bird that is everywhere all summer and gone all winter. Where does it go? The guesses were wonderful. Aristotle, who got a great many things right, was certain that some birds simply hibernated, tucked away in hollow trees until spring. For centuries after him, ordinary people believed that swallows and storks passed the winter asleep in the mud at the bottom of the lakes. And in 1703, an anonymous English writer did the arithmetic and concluded, with a straight face, that the birds flew to the moon and back, a journey of two months each way. It sounds absurd now. But put yourself in their position. The bird is here, then it is not, and then it is back again. With no way to follow it, the moon is honestly as good a guess as any.</div>
+  </section>
+
+  <!-- 4 · PFEILSTORCH -->
+  <section class="slide" data-chapter="1822">
+    <div class="inner">
+      <div class="split">
+        <div>
+          <p class="chapter reveal">1822 &nbsp;·&nbsp; Klütz, Germany</p>
+          <p class="pull reveal">And then, one spring, the answer walked home on its own two legs.</p>
+          <p class="lead reveal" style="margin-top:1.4rem;">A white stork returned from the winter with a long spear driven clean through its neck. Not a European spear. An iron-tipped African hunting arrow. Somewhere south of the Sahara a hunter had thrown it and missed the kill. The stork survived, and flew thousands of kilometres home with the weapon still in it.</p>
+          <p class="lead reveal">That one wounded bird proved what centuries of philosophy could not: the storks winter in <span class="em">Africa</span>. About 25 of these <span class="accent-s">Pfeilstörche</span>, or "arrow storks", were later recorded. This one still stands in a glass case at the University of Rostock.</p>
+        </div>
+        <div class="reveal" aria-hidden="true">
+          <svg viewBox="0 0 320 360" fill="none" style="width:100%;height:auto;">
+            <defs>
+              <radialGradient id="halo" cx="50%" cy="42%" r="55%">
+                <stop offset="0%" stop-color="oklch(0.6 0.13 45 / .35)"/>
+                <stop offset="100%" stop-color="transparent"/>
+              </radialGradient>
+            </defs>
+            <circle cx="160" cy="150" r="150" fill="url(#halo)"/>
+            <!-- stork body -->
+            <g stroke="oklch(0.96 0.01 85)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="oklch(0.96 0.01 85)">
+              <path d="M120 250 C110 210 118 175 150 165 C185 154 215 168 220 196 C224 220 210 244 182 252 C160 258 134 262 120 250 Z"/>
+              <!-- neck up -->
+              <path d="M150 168 C150 140 158 120 176 104" fill="none" stroke-width="10"/>
+              <!-- head -->
+              <circle cx="180" cy="98" r="11"/>
+              <!-- wing hint -->
+              <path d="M150 200 C120 196 96 205 78 220" fill="none" stroke-width="3"/>
+              <!-- legs -->
+              <path d="M140 258 L132 320 M168 258 L176 320" fill="none" stroke="var(--stork)" stroke-width="4"/>
+              <path d="M132 320 l-9 6 M132 320 l9 6 M176 320 l-9 6 M176 320 l9 6" stroke="var(--stork)" stroke-width="3"/>
+            </g>
+            <!-- beak -->
+            <path d="M190 96 L228 90" stroke="var(--stork)" stroke-width="6" stroke-linecap="round"/>
+            <!-- the arrow through the neck -->
+            <g stroke="var(--gold)" stroke-width="4" stroke-linecap="round">
+              <line x1="96" y1="150" x2="240" y2="118"/>
+              <path d="M240 118 l-16 -2 M240 118 l-13 9" stroke-width="3.5"/>
+              <path d="M96 150 l14 -6 l-2 12 Z" fill="var(--gold)" stroke="none"/>
+            </g>
+          </svg>
+          <p style="text-align:center; color:var(--ink-dim); font-size:.82rem; margin-top:.4rem;">The Rostock Pfeilstorch, after Wikimedia</p>
+        </div>
+      </div>
+    </div>
+    <div class="note">And then, one spring, the answer walked in on its own two legs. Eighteen twenty two, a small country estate near the village of Klütz on Germany's Baltic coast. A white stork arrives home from wherever storks go, and sticking straight through its neck is a spear. Not a European spear. A long African hunting arrow, iron tip, hardwood shaft, exactly the kind used south of the Sahara. Now think about what that actually means. Somewhere in central Africa, a hunter threw that spear and missed the kill. The bird lived. It carried on for months with an arrow through its neck, and then it flew, all the way back, to a German village. They named it the Pfeilstorch, the arrow stork. Around twenty five more of them turned up over the following century. And that single wounded bird did what centuries of clever philosophy never could. It proved, past all argument, that our storks spend their winters in Africa. You can still go and see it. It stands in a glass case at the University of Rostock, spear and all.</div>
+  </section>
+
+  <!-- 5 · WHY NOT STRAIGHT -->
+  <section class="slide" data-chapter="The physics">
+    <div class="inner">
+      <div class="split">
+        <div>
+          <p class="chapter reveal">The physics of the journey</p>
+          <h2 class="head reveal">She doesn't fly to Africa. She soars there.</h2>
+          <p class="lead reveal">A stork is too heavy to flap ten thousand kilometres. She would starve. So she waits for a <span class="accent">thermal</span>, a column of warm air rising off the sun-baked ground, spreads her wings, and lets it lift her in slow circles, sometimes a kilometre high, without a single beat. Then she glides, losing height gently, until she finds the next one.</p>
+          <p class="lead reveal">Here is the catch that shapes everything: <span class="em">thermals only rise over warm land.</span> The open sea gives nothing to climb. So a soaring stork will go a very long way out of her way rather than cross a wide stretch of water.</p>
+        </div>
+        <div class="reveal" aria-hidden="true">
+          <svg class="thermal-svg map" viewBox="0 0 420 320" fill="none">
+            <!-- ground -->
+            <path d="M0 250 H420 V320 H0 Z" fill="oklch(0.3 0.03 70)"/>
+            <path d="M0 250 H420" stroke="var(--gold)" stroke-width="1" opacity=".5"/>
+            <!-- sun -->
+            <circle cx="360" cy="56" r="26" fill="oklch(0.82 0.13 72 / .9)"/>
+            <g stroke="oklch(0.82 0.13 72 / .6)" stroke-width="2" stroke-linecap="round">
+              <line x1="360" y1="14" x2="360" y2="24"/><line x1="402" y1="56" x2="392" y2="56"/>
+              <line x1="392" y1="24" x2="386" y2="30"/>
+            </g>
+            <!-- rising heat columns -->
+            <g class="rise" stroke="var(--gold)" stroke-width="2" opacity=".6" stroke-linecap="round">
+              <path d="M120 250 q8 -18 0 -36 q-8 -18 0 -36"/>
+              <path d="M140 250 q8 -18 0 -36 q-8 -18 0 -36"/>
+            </g>
+            <!-- the spiral up -->
+            <path d="M130 240 C70 210 190 190 130 160 C70 130 190 110 132 84" stroke="var(--stork)" stroke-width="2.5" stroke-dasharray="4 6" fill="none"/>
+            <!-- glide across -->
+            <path d="M132 84 C210 96 300 140 380 176" stroke="oklch(0.96 0.01 85)" stroke-width="2.5" fill="none"/>
+            <!-- birds -->
+            <g stroke="oklch(0.96 0.01 85)" stroke-width="3" stroke-linecap="round" fill="none">
+              <g transform="translate(122 150)"><path d="M0 6 Q7 -3 14 6 Q21 -3 28 6"/></g>
+              <g transform="translate(300 150) scale(.9)"><path d="M0 6 Q7 -3 14 6 Q21 -3 28 6"/></g>
+            </g>
+            <text x="150" y="150" class="maplabel sub" fill="var(--stork)">circle up, no flapping</text>
+            <text x="250" y="126" class="maplabel sub">then glide</text>
+            <text x="20" y="300" class="maplabel sub" fill="var(--gold)">warm land = lift</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+    <div class="note">So how does she actually do it? Ten thousand kilometres is a very long way to flap, and a stork is heavy. If she beat her wings the whole distance she would burn out and starve long before Africa. So instead she cheats, beautifully. On a sunny day the ground heats up and sends invisible columns of warm rising air up into the sky. We call them thermals. The stork finds one, opens her wings, and simply rides it upward in slow lazy circles, sometimes a full kilometre into the air, without one single flap. Then she peels off the top and glides, losing height gently, until she catches the next elevator up. Circle, glide, circle, glide, the whole way to Africa. But there is a catch, and honestly the whole story hangs on it. Thermals only rise over warm land. The open sea is dead, flat air. So a stork will travel badly out of her way rather than cross a wide stretch of water. Hold onto that one fact. It explains the entire map you are about to see.</div>
+  </section>
+
+  <!-- 6 · HERO MAP -->
+  <section class="slide wide" data-chapter="The routes">
+    <div class="inner">
+      <div class="split map-first">
+        <div class="mapwrap reveal">
+          <div id="leafletMap" role="img" aria-label="Interactive map of the two white stork migration routes from Europe to Africa">
+            <div class="map-fallback">This map loads live from OpenStreetMap.<br/>Connect to the internet to explore the two flyways.</div>
+          </div>
+          <p class="map-hint">Live map &middot; drag to pan, use + / &minus; or double&#8209;click to zoom</p>
+        </div>
+
+        <div>
+          <p class="chapter reveal">The routes</p>
+          <h2 class="head reveal">Two roads to Africa</h2>
+          <p class="lead reveal">Because no stork will cross the middle of the Mediterranean, Europe's birds pour around its edges instead, and they split into two great streams. Birds from the <span class="accent">west</span> drift down through Spain and hop the narrow strait at Gibraltar. Birds from the <span class="accent-r">east</span> sweep through the Balkans and cross at the Bosphorus.</p>
+          <p class="lead reveal">An invisible line runs through central Europe. Which side of it your chimney sits on decides which continent's edge you will follow south. Most of the Polish storks turn <span class="accent-r">east</span>.</p>
+          <div class="legend reveal">
+            <span><i style="background:var(--gold)"></i> Western route</span>
+            <span><i style="background:var(--rose)"></i> Eastern route</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="note">Here it is. The whole journey, on a single map. Because no sane stork will cross the middle of the Mediterranean, they pour around the edges of it instead, and Europe splits into two great rivers of birds. Look at the west first. Storks from Spain, France, western Germany drift down through Iberia to the very bottom corner of Europe, and cross into Africa at the Strait of Gibraltar, where the gap is only about fourteen kilometres. A short, nervous hop over water, and they are in Morocco. Now the east. Storks from Poland, from the Baltics, from the Balkans, go the other way. Down through the Balkans to Istanbul, and across into Asia at the Bosphorus, another narrow pinch of water. And running invisibly through the middle of Europe, roughly here, is the divide. Storks on the western side of it turn right, toward Gibraltar. Storks on the eastern side turn left, toward the Bosphorus. Two birds from villages a hundred kilometres apart can end up on different continents. And most of ours, the Polish ones, go east.</div>
+  </section>
+
+  <!-- 7 · THE PINCH POINTS -->
+  <section class="slide" data-chapter="The crossings">
+    <div class="inner">
+      <p class="chapter reveal">The pinch points</p>
+      <h2 class="head reveal" style="max-width:20ch;">Where the sky fills with storks</h2>
+      <p class="lead reveal" style="max-width:60ch;">Funnel a whole continent of birds through two narrow gaps and something spectacular happens: they pile up. Over the crossings the storks gather into slow spinning towers, thousands of birds riding one thermal at once. Birdwatchers call it a <span class="accent-s">kettle</span>.</p>
+      <div class="crossings">
+        <div class="cross west reveal">
+          <div class="tag">Western gate</div>
+          <h4>The Strait of Gibraltar</h4>
+          <div class="big">14 km</div>
+          <p>The shortest hop from Europe to Africa. Storks stack up on the Spanish side, wait for the right wind, and cross in a rush.</p>
+        </div>
+        <div class="cross east reveal">
+          <div class="tag">Eastern gate</div>
+          <h4>Over the Levant</h4>
+          <div class="big">~500,000</div>
+          <p>Roughly half a million white storks stream down the eastern flyway over Israel in a single autumn. The bigger of the two crowds by far.</p>
+        </div>
+      </div>
+    </div>
+    <div class="note">Now, what happens when you funnel an entire continent of birds through two narrow gaps? They pile up. And it is one of the great spectacles in nature. Over the crossing points, the storks gather into slow, spinning towers, thousands of birds all riding a single thermal at the same time, wheeling round and round as they climb. Birdwatchers have a lovely word for it. They call it a kettle, because it looks like water coming to the boil. In the west, at Gibraltar, the birds stack up on the Spanish shore and wait for the right wind before they dare the fourteen kilometres of open sea. But the eastern gate is on another scale entirely. Down the eastern flyway, over the tiny strip of land that is Israel, roughly half a million white storks pour through in a single autumn. Half a million. If you stand in the right valley on the right September day, the sky is nothing but storks, from one horizon to the other.</div>
+  </section>
+
+  <!-- 8 · THE GAUNTLET -->
+  <section class="slide" data-chapter="The dangers">
+    <div class="inner">
+      <div class="split">
+        <div>
+          <p class="chapter reveal">The gauntlet</p>
+          <h2 class="head reveal">It is a beautiful journey, and a brutal one</h2>
+          <p class="lead reveal">Most of the young storks that set out on their first migration will not come back. The road south is lined with ways to die.</p>
+        </div>
+        <div class="reveal">
+          <div class="rows">
+            <div class="row"><span class="ix">01</span><div><h4>Power lines</h4><p>Electrocution and collisions on power lines are among the biggest killers of storks anywhere on the route.</p></div></div>
+            <div class="row"><span class="ix">02</span><div><h4>The Sahara</h4><p>Days of flying over sand with nothing to eat or drink. A sandstorm or a headwind here is often fatal.</p></div></div>
+            <div class="row"><span class="ix">03</span><div><h4>The guns</h4><p>At the crossings, the same crowds that make the spectacle also make an easy target for illegal hunting.</p></div></div>
+            <div class="row"><span class="ix">04</span><div><h4>Drought</h4><p>A dry year in the Sahel means fewer locusts and grasshoppers waiting at the far end of the trip.</p></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="note">Now, I have made this sound like a lovely journey, and it is. But I should be honest with you. It is also brutal. Most of the young storks that set off on their very first migration will never come home. The road south is lined with ways to die. The single biggest killer, in most places along the route, is not a predator or the desert. It is us. Power lines. Storks are big birds, and when they land on a pylon or fly into a cable, they are electrocuted or they collide. Then there is the Sahara itself, days on end flying over sand with nothing to eat and nothing to drink, and a single sandstorm or a hard headwind out there can finish a whole flock. At the crossing points, the same great crowds that make the spectacle also make an easy target, and illegal shooting is still a serious problem. And even if she makes it all the way, a dry year in the Sahel means the grasshoppers she came all this way to eat simply are not there. It is a gauntlet, from the first day to the last.</div>
+  </section>
+
+  <!-- 9 · THE GARBAGE REVOLUTION -->
+  <section class="slide" data-chapter="A modern twist">
+    <div class="inner">
+      <p class="chapter reveal">A twist in an ancient story</p>
+      <h2 class="head reveal" style="max-width:18ch;">Some storks have stopped going altogether</h2>
+      <div class="split" style="margin-top:1.6rem; align-items:start;">
+        <p class="lead reveal">In Spain and Portugal, thousands of white storks no longer bother with Africa at all. They have found something better than a ten thousand kilometre round trip: the local landfill. A rubbish dump feeds them right through the winter, so they simply stay, holding their nests all year round.</p>
+        <p class="lead reveal">An instinct older than history, rewritten in a single generation by our garbage. Some of these birds now fly a few kilometres to a dump instead of crossing two continents. Nobody is quite sure yet what that will mean for them.</p>
+      </div>
+      <div class="fact reveal" style="max-width:none;">
+        <b>What changed</b>
+        <p>Warmer winters and year-round food from open landfills have turned many western storks from long-distance migrants into stay-at-home residents.</p>
+      </div>
+    </div>
+    <div class="note">Here is where the story takes a strange and very modern turn. In Spain and in Portugal, thousands of white storks have simply stopped going to Africa. They do not migrate at all any more. And the reason is almost funny. They found something better than a ten thousand kilometre round trip full of deserts and power lines and guns. They found the local rubbish dump. An open landfill puts out food all winter long, every day, reliably, so a lot of the western storks now just stay put. They keep their nests all year round, and instead of crossing two continents, they fly a few kilometres to the tip and back. Think about that for a moment. An instinct older than farming, older than writing, one of the deepest rhythms in the natural world, and we have partly rewritten it in a single human generation, with our leftovers. Warmer winters help too. Nobody is entirely sure yet what it will mean for the birds in the long run. But it is happening, right now, in front of us.</div>
+  </section>
+
+  <!-- 10 · HOW WE KNOW -->
+  <section class="slide" data-chapter="The evidence">
+    <div class="inner">
+      <p class="chapter reveal">How we finally know</p>
+      <h2 class="head reveal">From a numbered ring to a dot on a live map</h2>
+      <p class="lead reveal" style="max-width:58ch;">The arrow stork proved they reached Africa. Everything after that, the exact roads, the timings, the individual lives, came from patiently marking birds and getting them back.</p>
+      <div class="track">
+        <div class="step reveal"><div class="yr">1899</div><h4>The first rings</h4><p>A Danish schoolteacher, Hans Mortensen, started fitting birds with numbered metal rings. Wherever a bird was found, a piece of the map was filled in.</p></div>
+        <div class="step reveal"><div class="yr">1900s on</div><h4>Recoveries</h4><p>Decades of ringed storks, found and reported across Europe and Africa, slowly drew both flyways and the divide between them.</p></div>
+        <div class="step reveal"><div class="yr">Today</div><h4>Satellite tags</h4><p>Lightweight GPS trackers now report a stork's position from space. We can follow one named bird, day by day, from a Polish chimney to the veld.</p></div>
+      </div>
+    </div>
+    <div class="note">So how do we know all of this in such detail? The arrow stork proved they got to Africa. But everything after that, the exact roads, the timings, which bird went where, all of it came from a slow, patient idea: mark the birds, and wait to get them back. It starts in eighteen ninety nine, with a Danish schoolteacher named Hans Mortensen, who began fitting birds with small numbered metal rings, each one unique. The logic is simple. Ring a stork in Denmark, and if somebody finds it in Sudan and reports the number, you have just drawn a line on the map that no one could draw before. Do that for decades, with thousands of birds, and the two great flyways slowly appear out of the dots, along with the invisible divide between them. And today it is almost magical. We fit a stork with a tiny GPS tag, lighter than a phone, and it reports its position from space. We can now follow one single named bird, day by day, hour by hour, all the way from a chimney in Poland to a waterhole in South Africa, and watch the whole ten thousand kilometres unfold on a screen.</div>
+  </section>
+
+  <!-- 11 · THE HOMECOMING -->
+  <section class="slide" data-chapter="The return">
+    <div class="inner">
+      <div class="split">
+        <div>
+          <p class="chapter reveal">The homecoming</p>
+          <h2 class="head reveal">The same nest. Often the same mate.</h2>
+          <p class="lead reveal">After all of that, the crossings, the desert, a whole African winter, the stork comes back. Not just to Poland, or to the right district. To the exact same nest, the same wheel of sticks on the same chimney, often to meet the same partner she left in the autumn.</p>
+          <p class="lead reveal">The male usually arrives first, a few days ahead, to hold the nest. Across Europe his arrival is the real first day of spring, a bird that carries luck onto your roof. It is why the storks are painted on the barns and stitched into the folk tales.</p>
+        </div>
+        <div class="reveal" aria-hidden="true">
+          <svg viewBox="0 0 300 340" fill="none" style="width:100%;height:auto;">
+            <defs><radialGradient id="dawn" cx="50%" cy="30%" r="70%"><stop offset="0%" stop-color="oklch(0.6 0.13 45 / .3)"/><stop offset="100%" stop-color="transparent"/></radialGradient></defs>
+            <circle cx="150" cy="120" r="150" fill="url(#dawn)"/>
+            <!-- roof -->
+            <path d="M40 300 L150 232 L260 300 Z" fill="oklch(0.28 0.03 40)"/>
+            <rect x="60" y="288" width="180" height="52" fill="oklch(0.24 0.025 40)"/>
+            <!-- chimney -->
+            <rect x="176" y="196" width="34" height="60" fill="oklch(0.32 0.03 45)"/>
+            <!-- nest -->
+            <ellipse cx="193" cy="196" rx="40" ry="15" fill="oklch(0.36 0.04 70)"/>
+            <ellipse cx="193" cy="192" rx="34" ry="10" fill="oklch(0.28 0.035 65)"/>
+            <!-- standing stork -->
+            <g stroke="oklch(0.96 0.01 85)" stroke-width="4" stroke-linecap="round">
+              <line x1="188" y1="192" x2="184" y2="150"/><line x1="196" y1="192" x2="196" y2="150"/>
+            </g>
+            <path d="M182 150 C176 132 182 116 196 110 C214 103 230 116 228 134 C227 150 214 158 198 156 C190 155 184 154 182 150 Z" fill="oklch(0.96 0.01 85)"/>
+            <path d="M210 112 C214 96 222 84 232 78" fill="none" stroke="oklch(0.96 0.01 85)" stroke-width="8" stroke-linecap="round"/>
+            <circle cx="234" cy="74" r="8" fill="oklch(0.96 0.01 85)"/>
+            <path d="M241 72 L266 66" stroke="var(--stork)" stroke-width="5" stroke-linecap="round"/>
+            <path d="M214 156 l3 22 M226 154 l4 20" stroke="var(--stork)" stroke-width="3.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+    <div class="note">And then, after all of that, the crossings, the desert, a whole winter on another continent, she comes back. And this is the part that gets me every time. She does not just come back to Poland, or even to the right district. She comes back to the exact same nest. The same wheel of sticks, on the same chimney, on the same house. And very often she comes back to the same partner she said goodbye to in the autumn, the two of them navigating separately across ten thousand kilometres and meeting again on the same roof. The male usually turns up first, a few days early, to claim the nest and repair it before she arrives. And all across Europe, for hundreds of years, that arrival has meant one thing. It is the real first day of spring. A stork on your roof is luck, it is new life, it is the year turning. That is why they are painted on the barns, and carved over the doorways, and woven right through the folk tales. The bird earned that place. It flew to Africa and back to keep it.</div>
+  </section>
+
+  <!-- 12 · CLOSING -->
+  <section class="slide" data-chapter="Epilogue">
+    <div class="inner" style="text-align:center;">
+      <p class="chapter reveal" style="justify-content:center;">Epilogue</p>
+      <h2 class="head reveal" style="font-size:clamp(2.1rem,5.6vw,3.8rem); max-width:20ch; margin-inline:auto;">One bird ties a Polish village to the African plain</h2>
+      <p class="lead reveal" style="margin:1.6rem auto 0; text-align:center;">The stork clattering on that chimney in July has stood over a waterhole in South Africa. She has crossed the Sahara twice, threaded the Bosphorus, and found her way home to a wheel of sticks she built herself. Look up this summer. You are watching one of the longest, oldest commutes on earth.</p>
+      <p class="reveal" style="margin-top:2rem; color:var(--ink-dim); font-size:.95rem;">Keep the nests up. Bury the power lines where you can. Then get out of the way and let them fly.</p>
+      <p class="reveal" style="margin-top:2.6rem; font-family:var(--font-display); font-style:italic; color:var(--gold); font-size:1.2rem;">Safe travels.</p>
+    </div>
+    <div class="note">So let me leave you with this. The next time you see a white stork clattering away on a chimney on a July afternoon, looking for all the world like a fixture of the village, remember where those feet have been. That same bird has stood over a waterhole in South Africa. She has crossed the Sahara, not once but twice. She has threaded the eye of the Bosphorus in a tower of ten thousand birds, and then she has found her way back, across ten thousand kilometres, to a pile of sticks she built with her own beak, on your roof. One bird, tying a Polish village to the plains of Africa, every single year, quietly, while we mostly do not notice. Our job in all of this is small and it is simple. Keep the nests up. Bury the power lines where we can. And then get out of the way, and let them fly. Safe travels.</div>
+  </section>
+
+</main>
+
+<!-- chrome -->
+<div class="counter" id="counter"><b>01</b> / 12</div>
+
+<div class="hint" id="hint">
+  <span><kbd>&larr;</kbd> <kbd>&rarr;</kbd> navigate</span>
+  <span><kbd>N</kbd> narrator</span>
+  <span><kbd>F</kbd> fullscreen</span>
+</div>
+
+<div class="nav">
+  <button class="btn icon" id="narrateBtn" title="Narrator script (N)" aria-label="Toggle narrator">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10v4a1 1 0 0 0 1 1h3l4 4V5L7 9H4a1 1 0 0 0-1 1Z"/><path d="M16 9a3 3 0 0 1 0 6"/><path d="M19 6a7 7 0 0 1 0 12"/></svg>
+  </button>
+  <button class="btn icon" id="prev" title="Previous" aria-label="Previous slide">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+  </button>
+  <button class="btn" id="next" title="Next" aria-label="Next slide">
+    Next <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+  </button>
+</div>
+
+<aside class="narrator" id="narrator" aria-live="polite">
+  <button class="btn icon close" id="narrateClose" aria-label="Close narrator"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  <div class="lbl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10v4a1 1 0 0 0 1 1h3l4 4V5L7 9H4a1 1 0 0 0-1 1Z"/><path d="M16 9a3 3 0 0 1 0 6"/></svg> Read this aloud</div>
+  <p class="script" id="script"></p>
+</aside>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+(function(){
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var total = slides.length;
+  var i = 0;
+  var counter = document.getElementById('counter');
+  var progress = document.getElementById('progress');
+  var prevBtn = document.getElementById('prev');
+  var nextBtn = document.getElementById('next');
+  var script = document.getElementById('script');
+  var narrator = document.getElementById('narrator');
+  var hint = document.getElementById('hint');
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var pad = function(n){ return (n<10?'0':'')+n; };
+
+  // ---- Leaflet map (slide 6) ----
+  var mapEl = document.getElementById('leafletMap');
+  var mapSlide = mapEl && mapEl.closest ? mapEl.closest('.slide') : null;
+  var mapSlideIdx = mapSlide ? slides.indexOf(mapSlide) : -1;
+  var storkMap = null, storkBounds = null;
+
+  var WEST = [[50.5,8.0],[48.0,2.5],[44.0,0.0],[41.5,-3.5],[37.5,-5.5],[36.0,-5.6],[34.0,-6.5],[30.5,-9.0],[26.0,-13.0],[20.0,-16.0],[16.0,-15.0],[14.5,-6.0],[13.5,1.0]];
+  var EAST = [[52.23,21.0],[47.5,19.0],[44.0,22.0],[42.0,25.0],[41.0,29.0],[39.0,33.0],[37.0,36.0],[34.0,36.2],[32.0,35.3],[29.5,34.5],[27.0,33.0],[22.0,32.0],[15.5,32.5],[9.0,38.0],[2.0,37.0],[-1.3,36.8],[-6.8,37.0],[-15.4,28.3],[-22.0,29.0],[-28.5,26.5]];
+
+  function pin(map, lat, lng, cls, label, sub){
+    var html = '<div class="pin '+cls+'"><i></i><b>'+label+(sub?'<span>'+sub+'</span>':'')+'</b></div>';
+    L.marker([lat,lng], { icon: L.divIcon({ className:'pin-wrap', html:html, iconSize:[0,0] }), interactive:false, keyboard:false }).addTo(map);
+  }
+
+  function buildMap(){
+    if (storkMap || !mapEl || typeof L === 'undefined') return;
+    try {
+      storkMap = L.map(mapEl, { zoomControl:true, attributionControl:true, scrollWheelZoom:false, keyboard:false, minZoom:2, worldCopyJump:false });
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        subdomains:'abcd', maxZoom:19,
+        attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+      }).addTo(storkMap);
+
+      var gold = '#e9b24d', rose = '#e8746a';
+      // soft glow underlays
+      L.polyline(WEST, { color:gold, weight:11, opacity:0.16 }).addTo(storkMap);
+      L.polyline(EAST, { color:rose, weight:11, opacity:0.16 }).addTo(storkMap);
+      // main routes (draw-in animated via CSS)
+      L.polyline(WEST, { color:gold, weight:3, opacity:0.95, className:'route-anim', lineCap:'round', lineJoin:'round' }).addTo(storkMap);
+      L.polyline(EAST, { color:rose, weight:3, opacity:0.95, className:'route-anim', lineCap:'round', lineJoin:'round' }).addTo(storkMap);
+
+      pin(storkMap, 52.23, 21.0, 'start', 'Warsaw', 'breeding grounds');
+      pin(storkMap, 41.0, 29.0, 'rose', 'Bosphorus');
+      pin(storkMap, 32.0, 35.3, 'rose', 'The Levant', '~500,000 storks');
+      pin(storkMap, 36.0, -5.6, 'gold', 'Gibraltar', '14 km crossing');
+      pin(storkMap, 13.5, 1.0, 'gold', 'West Africa', '& the Sahel');
+      pin(storkMap, -28.5, 26.5, 'rose', 'South Africa', 'end of the line');
+
+      storkBounds = L.latLngBounds(WEST.concat(EAST));
+      storkMap.fitBounds(storkBounds, { padding:[24,24], maxZoom:5 });
+      mapEl.classList.add('map-live');
+    } catch(err){ /* offline / blocked tiles: leave the fallback message in place */ }
+  }
+
+  function refreshMap(){
+    if (!storkMap) return;
+    setTimeout(function(){
+      storkMap.invalidateSize();
+      if (storkBounds) storkMap.fitBounds(storkBounds, { padding:[24,24], maxZoom:5 });
+    }, 90);
+  }
+
+  function updateNarrator(){
+    var note = slides[i].querySelector('.note');
+    script.textContent = note ? note.textContent : '';
+  }
+
+  function show(n){
+    i = Math.max(0, Math.min(total-1, n));
+    slides.forEach(function(s, idx){ s.classList.toggle('is-active', idx===i); });
+    counter.innerHTML = '<b>'+pad(i+1)+'</b> / '+pad(total);
+    progress.style.width = ((i)/(total-1)*100)+'%';
+    prevBtn.disabled = i===0;
+    nextBtn.disabled = i===total-1;
+    updateNarrator();
+    if (i === mapSlideIdx){ refreshMap(); }
+    if (i>0 && hint){ hint.style.opacity = '0'; }
+  }
+
+  function nextSlide(){ show(i+1); }
+  function prevSlide(){ show(i-1); }
+
+  nextBtn.addEventListener('click', nextSlide);
+  prevBtn.addEventListener('click', prevSlide);
+
+  function toggleNarrator(force){
+    var open = (typeof force === 'boolean') ? force : !narrator.classList.contains('open');
+    narrator.classList.toggle('open', open);
+  }
+  document.getElementById('narrateBtn').addEventListener('click', function(){ toggleNarrator(); });
+  document.getElementById('narrateClose').addEventListener('click', function(){ toggleNarrator(false); });
+
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' '){ e.preventDefault(); nextSlide(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp'){ e.preventDefault(); prevSlide(); }
+    else if (e.key === 'Home'){ show(0); }
+    else if (e.key === 'End'){ show(total-1); }
+    else if (e.key === 'n' || e.key === 'N'){ toggleNarrator(); }
+    else if (e.key === 'f' || e.key === 'F'){
+      if (!document.fullscreenElement){ document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }
+      else { document.exitFullscreen && document.exitFullscreen(); }
+    }
+  });
+
+  // touch swipe
+  var x0 = null;
+  document.addEventListener('touchstart', function(e){
+    if (e.target.closest && e.target.closest('.leaflet-container')){ x0 = null; return; }
+    x0 = e.changedTouches[0].clientX;
+  }, {passive:true});
+  document.addEventListener('touchend', function(e){
+    if (x0 === null) return;
+    var dx = e.changedTouches[0].clientX - x0;
+    if (Math.abs(dx) > 55){ dx < 0 ? nextSlide() : prevSlide(); }
+    x0 = null;
+  }, {passive:true});
+
+  // starfield
+  var stars = document.getElementById('stars');
+  var frag = document.createDocumentFragment();
+  for (var s=0; s<46; s++){
+    var d = document.createElement('div');
+    d.className = 'star';
+    d.style.left = (Math.random()*100)+'%';
+    d.style.top = (Math.random()*70)+'%';
+    d.style.opacity = (0.2 + Math.random()*0.5).toFixed(2);
+    var sz = (1 + Math.random()*1.6).toFixed(1);
+    d.style.width = sz+'px'; d.style.height = sz+'px';
+    frag.appendChild(d);
+  }
+  stars.appendChild(frag);
+
+  buildMap();
+  show(0);
+})();
+</script>
+</body>
+</html>
