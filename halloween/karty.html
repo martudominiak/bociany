@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<title>Karty Halloween: Austin Powers i Foxxy Cleopatra</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin: 0; font-family: "Liberation Sans", Arial, sans-serif; color: #1c1230; background: #ddd; }
+  .card { width: 210mm; height: 297mm; padding: 13mm 14mm 11mm; margin: 0 auto; background: #fff;
+          page-break-after: always; display: flex; flex-direction: column; border: 5mm solid var(--c); }
+  .austin { --c: #5b2a9d; --a: #e6007e; --bg: #f6effd; }
+  .foxxy  { --c: #c98a00; --a: #7a3b00; --bg: #fff6df; }
+  header { text-align: center; border-bottom: 1.2mm dotted var(--a); padding-bottom: 4mm; margin-bottom: 4mm; }
+  .who { font-size: 11pt; letter-spacing: 3px; text-transform: uppercase; color: var(--a); font-weight: bold; }
+  h1 { margin: 1mm 0; font-family: "DejaVu Serif", Georgia, serif; font-size: 36pt; color: var(--c); line-height: 1.05; }
+  .tip { font-size: 10.5pt; color: #4a4460; }
+  h2 { font-size: 11pt; letter-spacing: 2px; text-transform: uppercase; color: var(--a); margin: 3mm 0 2mm; }
+  ol { list-style: none; margin: 0; padding: 0; counter-reset: n; }
+  li { counter-increment: n; position: relative; padding: 2mm 3mm 2mm 13mm; margin-bottom: 1.6mm;
+       background: var(--bg); border-radius: 3mm; }
+  li::before { content: counter(n); position: absolute; left: 3mm; top: 50%; transform: translateY(-50%);
+       width: 7mm; height: 7mm; border-radius: 50%; background: var(--c); color: #fff; font-weight: bold;
+       font-size: 10pt; display: flex; align-items: center; justify-content: center; }
+  .en { font-family: "DejaVu Serif", Georgia, serif; font-weight: bold; font-size: 14.5pt; line-height: 1.2; }
+  .pl { font-size: 10.5pt; color: #4a4460; margin-top: .5mm; }
+  .pl i { color: var(--a); font-style: normal; font-weight: bold; }
+  .duet { margin-top: auto; border: .6mm solid var(--c); border-radius: 3mm; padding: 3mm 4mm; }
+  .duet h2 { margin-top: 0; }
+  .duet p { margin: 1mm 0; font-size: 11.5pt; }
+  .duet b { color: var(--c); }
+  .duet span { color: #4a4460; font-size: 10pt; }
+  @media print { body { background: none; } }
+</style>
+</head>
+<body>
+
+<section class="card austin">
+  <header>
+    <div class="who">Karta roli · Halloween</div>
+    <h1>Austin Powers</h1>
+    <div class="tip">Brytyjski akcent, szeroki uśmiech (zęby!), palec przy ustach, biodra w ruchu. Wszystko mów z entuzjazmem.</div>
+  </header>
+
+  <h2>Teksty do nauczenia</h2>
+  <ol>
+    <li><div class="en">Yeah, baby, yeah!</div><div class="pl">O tak, mała, tak! <i>· na wszystko, co ci się podoba</i></div></li>
+    <li><div class="en">Groovy, baby!</div><div class="pl">Odlotowo, mała! <i>· uniwersalna pochwała</i></div></li>
+    <li><div class="en">Oh, behave!</div><div class="pl">Och, zachowuj się! <i>· gdy ktoś flirtuje albo świntuszy</i></div></li>
+    <li><div class="en">Shagadelic!</div><div class="pl">Bzykodelicznie! <i>· gdy coś jest super</i></div></li>
+    <li><div class="en">Smashing!</div><div class="pl">Bombowo! <i>· po brytyjsku: świetnie</i></div></li>
+    <li><div class="en">Do I make you horny, baby? Do I?</div><div class="pl">Kręcę cię, mała? No kręcę? <i>· pozując do zdjęcia</i></div></li>
+    <li><div class="en">Shall we shag now, or shall we shag later?</div><div class="pl">Bzykamy się teraz czy bzykamy się później? <i>· klasyk na podryw</i></div></li>
+    <li><div class="en">Allow myself to introduce… myself.</div><div class="pl">Pozwolę sobie przedstawić… siebie. <i>· na powitanie</i></div></li>
+    <li><div class="en">Danger is my middle name.</div><div class="pl">Niebezpieczeństwo to moje drugie imię. <i>· przedstawiając się</i></div></li>
+    <li><div class="en">That's not my bag, baby.</div><div class="pl">To nie moja bajka, mała. <i>· gdy czegoś nie chcesz</i></div></li>
+    <li><div class="en">I've lost my mojo!</div><div class="pl">Straciłem swoje mojo! <i>· gdy coś nie wyjdzie</i></div></li>
+    <li><div class="en">Crikey!</div><div class="pl">O kurczę! <i>· zdziwienie</i></div></li>
+  </ol>
+
+  <div class="duet">
+    <h2>Duet z Foxxy</h2>
+    <p><b>Austin:</b> Foxxy Cleopatra! Groovy, baby! <span>— Foxxy Cleopatra! Odlotowo, mała!</span></p>
+    <p><b>Foxxy:</b> Austin Powers! Shazam! <span>— Austin Powers! Szazam!</span></p>
+    <p><b>Austin:</b> Yeah, baby, yeah! <span>— O tak, mała, tak!</span></p>
+  </div>
+</section>
+
+<section class="card foxxy">
+  <header>
+    <div class="who">Karta roli · Halloween</div>
+    <h1>Foxxy Cleopatra</h1>
+    <div class="tip">Diwa disco z lat 70.: ręka na biodrze, pewność siebie, przeciągane „sugah”. Mów wolno i z pazurem.</div>
+  </header>
+
+  <h2>Teksty z filmu</h2>
+  <ol>
+    <li><div class="en">I'm Foxxy Cleopatra, and I'm a whole lotta woman!</div><div class="pl">Jestem Foxxy Cleopatra i jestem kawał kobiety! <i>· na wejście, obowiązkowo</i></div></li>
+    <li><div class="en">Shazam!</div><div class="pl">Szazam! <i>· okrzyk triumfu, z pozą</i></div></li>
+    <li><div class="en">You're under arrest, sugah!</div><div class="pl">Jesteś aresztowany, słodziaku! <i>· celując palcami jak pistoletem</i></div></li>
+  </ol>
+
+  <h2>W jej stylu · slang lat 70.</h2>
+  <ol style="counter-reset: n 3">
+    <li><div class="en">Sure 'nuff, sugah.</div><div class="pl">No pewnie, słodziaku. <i>· zamiast „yes”</i></div></li>
+    <li><div class="en">Right on!</div><div class="pl">I o to chodzi! <i>· aprobata</i></div></li>
+    <li><div class="en">Can you dig it?</div><div class="pl">Czaisz? <i>· po każdej mądrości</i></div></li>
+    <li><div class="en">Don't mess with Foxxy!</div><div class="pl">Nie zadzieraj z Foxxy! <i>· ostrzeżenie</i></div></li>
+    <li><div class="en">Step off, jive turkey!</div><div class="pl">Spadaj, ściemniaczu! <i>· gdy ktoś się naprzykrza</i></div></li>
+    <li><div class="en">Austin, behave!</div><div class="pl">Austin, zachowuj się! <i>· jego własną bronią</i></div></li>
+    <li><div class="en">Solid!</div><div class="pl">Sztos! <i>· gdy coś jest dobre</i></div></li>
+  </ol>
+
+  <div class="duet">
+    <h2>Duet z Austinem</h2>
+    <p><b>Austin:</b> Foxxy Cleopatra! Groovy, baby! <span>— Foxxy Cleopatra! Odlotowo, mała!</span></p>
+    <p><b>Foxxy:</b> Austin Powers! Shazam! <span>— Austin Powers! Szazam!</span></p>
+    <p><b>Austin:</b> Yeah, baby, yeah! <span>— O tak, mała, tak!</span></p>
+  </div>
+</section>
+
+</body>
+</html>
